@@ -1,7 +1,7 @@
 pandocr
 =======
 
-Python server and client for Pandoc.
+Python server and client for Pandoc (`pandoc` as a service).
 
 The client supports all pandoc commands and optional arguments and behaves almost like a native `pandoc` tool. 
 All input files are pushed to the server, and the output files are downloaded and moved to the designated
@@ -24,7 +24,7 @@ $ pandoc-server --host 0.0.0.0 --port 8000
 
 Using the client:
 ```sh
-$ PANDOC_HOST=127.0.0.1 PANDOC_HOST=8000 pandocr -f markdown -t html -o foo.html foo.md
+$ export PANDOC_HOST=127.0.0.1
+$ export PANDOC_PORT=8000
+$ pandocr -f markdown -t html -o foo.html foo.md
 ```
-
-
