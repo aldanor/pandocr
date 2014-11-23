@@ -3,9 +3,9 @@
 import json
 import uuid
 import flask
-import argparse
 import tarfile
 import py.path
+import argparse
 import subprocess
 
 
