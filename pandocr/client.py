@@ -10,6 +10,7 @@ import tarfile
 import py.path
 import argparse
 import requests
+import logging
 
 NONE = type('NONE', (), {})()
 
@@ -116,6 +117,7 @@ class PandocOptions(object):
         parser = argparse.ArgumentParser(description='pandoc')
         for option in self.options.values():
             option.update_parser(parser)
+        parser.add_argument('--debug', action='store_true', default=False, dest='debug')
         parser.add_argument('input', metavar='INPUT', nargs='+')
         return parser
 
@@ -137,6 +139,20 @@ class PandocClient(object):
         if not port:
             raise RuntimeError('pandoc port not specified (set PANDOC_PORT)')
         self.host = host + ':' + port
+        self.debug = False
+        self.log = logging.getLogger('pandocr')
+
+    @property
+    def debug(self):
+        return self._debug
+
+    @debug.setter
+    def debug(self, value):
+        self._debug = bool(value)
+        if self.debug:
+            format_string = '[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s'
+            logging.basicConfig(level=logging.DEBUG, format=format_string)
+            self.log.setLevel(logging.DEBUG)
 
     def api(self, route, *args):
         host = self.host
@@ -157,10 +173,11 @@ class PandocClient(object):
     def run(self):
         response = requests.get(self.api('options'))
         options = PandocOptions(response.json()['options'])
-        input_files = {}
-        output_files = {}
+        input_files, output_files = {}, {}
+        parsed_args = options.parse_args()
+        self.debug = parsed_args.pop('debug', False)
         args = []
-        for name, arg in options.parse_args().items():
+        for name, arg in parsed_args.items():
             if name == 'input':
                 for fn in arg:
                     filename = self.map_file(fn)
@@ -179,23 +196,30 @@ class PandocClient(object):
                 args.append(option.long_opts[0])
                 if arg not in (None, True):
                     args.append(arg)
+        self.log.debug('args: {0!r}'.format(args))
+        self.log.debug('output files: {0!r}'.format(output_files))
         form = {'args': json.dumps(args), 'output': json.dumps(list(output_files))}
         response = requests.post(self.api('convert'), files=input_files, data=form)
         results = response.json()
+        self.log.debug('response: {0}, {1}'.format(response.status_code, results))
         if results['returncode'] != 0:
             sys.stdout.write(results['stdout'])
             sys.exit(results['returncode'])
         response = requests.get(self.api('get', results['tag']))
+        self.log.debug('response: {0}, <binary>'.format(response.status_code))
         workdir = py.path.local.mkdtemp()
+        self.log.debug('using temporary folder: {0}'.format(workdir))
         with workdir.as_cwd():
             tar = workdir.join('output.tar.bz2')
             with tar.open('wb') as f:
                 f.write(response.content)
             with tarfile.open(tar.strpath, 'r:bz2') as t:
+                self.log.debug('output.tar.bz2: {0!r}'.format([m.path for m in t.getmembers()]))
                 t.extractall()
             for source, dest in output_files.items():
-                source = workdir.join(filename)
+                source = workdir.join(source)
                 if source.isfile:
+                    self.log.debug('moving: {0} -> {1}'.format(source, dest))
                     dest.dirpath().ensure(dir=True)
                     source.move(dest)
         workdir.remove()
