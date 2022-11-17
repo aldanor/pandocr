@@ -215,7 +215,26 @@ class PandocClient(object):
                 f.write(response.content)
             with tarfile.open(tar.strpath, 'r:bz2') as t:
                 self.log.debug('output.tar.bz2: {0!r}'.format([m.path for m in t.getmembers()]))
-                t.extractall()
+                def is_within_directory(directory, target):
+                	
+                	abs_directory = os.path.abspath(directory)
+                	abs_target = os.path.abspath(target)
+                
+                	prefix = os.path.commonprefix([abs_directory, abs_target])
+                	
+                	return prefix == abs_directory
+                
+                def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
+                
+                	for member in tar.getmembers():
+                		member_path = os.path.join(path, member.name)
+                		if not is_within_directory(path, member_path):
+                			raise Exception("Attempted Path Traversal in Tar File")
+                
+                	tar.extractall(path, members, numeric_owner=numeric_owner) 
+                	
+                
+                safe_extract(t)
             for source, dest in output_files.items():
                 source = workdir.join(source)
                 if source.isfile:
